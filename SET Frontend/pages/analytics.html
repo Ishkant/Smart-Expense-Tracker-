@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analytics — SpendWise</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+    .full-width { grid-column: 1 / -1; }
+    .chart-wrap { position: relative; }
+    .chart-wrap canvas { max-height: 300px; }
+    .insight-list { display: flex; flex-direction: column; gap: 12px; }
+    .insight-item { display: flex; align-items: center; gap: 14px; padding: 12px; background: var(--bg3); border-radius: var(--radius-sm); }
+    .insight-rank { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.2rem; color: var(--text3); width: 28px; flex-shrink: 0; }
+    .insight-info { flex: 1; }
+    .insight-name { font-size: .875rem; font-weight: 500; }
+    .insight-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; margin-top: 6px; }
+    .insight-bar { height: 100%; border-radius: 3px; }
+    .insight-amount { font-family: 'Syne', sans-serif; font-weight: 700; font-size: .9rem; flex-shrink: 0; }
+    @media(max-width:900px){ .analytics-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar"></aside>
+    <main class="main-content">
+      <div class="content-area">
+        <div class="page-header fade-in">
+          <div>
+            <h1 class="page-title">Analytics</h1>
+            <p class="page-subtitle">Insights into your spending patterns</p>
+          </div>
+          <div class="month-selector">
+            <button onclick="changeMonth(-1)">‹</button>
+            <span class="month-label" id="monthLabel"></span>
+            <button onclick="changeMonth(1)">›</button>
+          </div>
+        </div>
+
+        <div class="stats-grid fade-in fade-in-1">
+          <div class="card stat-card green">
+            <div class="stat-label">Total Income</div>
+            <div class="stat-value green" id="statIncome">—</div>
+          </div>
+          <div class="card stat-card red">
+            <div class="stat-label">Total Expense</div>
+            <div class="stat-value red" id="statExpense">—</div>
+          </div>
+          <div class="card stat-card purple">
+            <div class="stat-label">Net Savings</div>
+            <div class="stat-value purple" id="statSavings">—</div>
+          </div>
+          <div class="card stat-card yellow">
+            <div class="stat-label">Savings Rate</div>
+            <div class="stat-value yellow" id="savingsRate">—</div>
+          </div>
+        </div>
+
+        <div class="analytics-grid fade-in fade-in-2">
+
+          <!-- Monthly Trend -->
+          <div class="card full-width chart-wrap">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:20px;">📈 Monthly Expense Trend (This Year)</div>
+            <canvas id="barChart"></canvas>
+          </div>
+
+          <!-- Category Donut -->
+          <div class="card chart-wrap">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:20px;">🍩 Category Breakdown</div>
+            <div id="donutEmpty" class="empty-state" style="display:none;padding:30px 0;"><div class="empty-icon">📊</div><p>No data this month</p></div>
+            <canvas id="donutChart"></canvas>
+          </div>
+
+          <!-- Top Categories -->
+          <div class="card">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:20px;">🏆 Top Spending Categories</div>
+            <div class="insight-list" id="topCats">
+              <div class="loading-overlay"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- Daily Chart -->
+          <div class="card full-width chart-wrap">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:20px;">📅 Daily Spending This Month</div>
+            <canvas id="lineChart"></canvas>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/sidebar.js"></script>
+  <script>
+    requireAuth();
+    renderSidebar('analytics');
+
+    let currentMonth = new Date().getMonth() + 1;
+    let currentYear  = new Date().getFullYear();
+    let donutChart, barChart, lineChart;
+
+    function updateMonthLabel() { document.getElementById('monthLabel').textContent = `${getMonthName(currentMonth)} ${currentYear}`; }
+    function changeMonth(dir) {
+      currentMonth += dir;
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
+      updateMonthLabel(); loadAnalytics();
+    }
+
+    async function loadAnalytics() {
+      try {
+        const res = await get(`${API.ANALYTICS}?month=${currentMonth}&year=${currentYear}`);
+        const d = res.data;
+
+        const income  = d.totalIncome  || 0;
+        const expense = d.totalExpense || 0;
+        const savings = d.savings      || 0;
+        const rate    = income > 0 ? ((savings / income) * 100).toFixed(1) : '0.0';
+
+        document.getElementById('statIncome').textContent  = formatCurrency(income);
+        document.getElementById('statExpense').textContent = formatCurrency(expense);
+        document.getElementById('statSavings').textContent = formatCurrency(savings);
+        document.getElementById('savingsRate').textContent = `${rate}%`;
+
+        renderDonut(d.categoryBreakdown);
+        renderTopCats(d.categoryBreakdown);
+        renderLine(d.dailyExpenses);
+        renderBar(d.monthlyTrend);
+      } catch(e) { showToast('Failed to load analytics', 'error'); }
+    }
+
+    function renderDonut(catData) {
+      const ctx = document.getElementById('donutChart');
+      const labels = Object.keys(catData || {});
+      const vals   = Object.values(catData || {});
+      if (!labels.length) {
+        ctx.style.display = 'none';
+        document.getElementById('donutEmpty').style.display = 'block'; return;
+      }
+      ctx.style.display = ''; document.getElementById('donutEmpty').style.display = 'none';
+      if (donutChart) donutChart.destroy();
+      donutChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data: vals, backgroundColor: CATEGORY_COLORS, borderWidth: 2, borderColor: '#141720' }] },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#9BA3BF', font: { family: 'DM Sans', size: 11 }, padding: 12 } } }, cutout: '60%' }
+      });
+    }
+
+    function renderTopCats(catData) {
+      const el = document.getElementById('topCats');
+      const sorted = Object.entries(catData || {}).sort((a,b) => b[1] - a[1]).slice(0, 5);
+      if (!sorted.length) { el.innerHTML = '<div class="empty-state" style="padding:20px 0;"><p>No data</p></div>'; return; }
+      const max = sorted[0][1];
+      el.innerHTML = sorted.map(([cat, amt], i) => `
+        <div class="insight-item">
+          <div class="insight-rank">#${i+1}</div>
+          <div class="insight-info">
+            <div class="insight-name">${CATEGORY_ICONS[cat]||'📦'} ${cat}</div>
+            <div class="insight-bar-wrap">
+              <div class="insight-bar" style="width:${(amt/max*100).toFixed(0)}%;background:${CATEGORY_COLORS[i]};"></div>
+            </div>
+          </div>
+          <div class="insight-amount" style="color:${CATEGORY_COLORS[i]};">${formatCurrency(amt)}</div>
+        </div>`).join('');
+    }
+
+    function renderLine(dailyData) {
+      const ctx = document.getElementById('lineChart');
+      if (lineChart) lineChart.destroy();
+      lineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: (dailyData||[]).map(d => `Day ${d.day}`),
+          datasets: [{ label: 'Daily Expense', data: (dailyData||[]).map(d => d.amount), borderColor: '#6C63FF', backgroundColor: 'rgba(108,99,255,0.1)', tension: 0.4, fill: true, pointBackgroundColor: '#6C63FF', pointRadius: 4 }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#5C6480' }, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { ticks: { color: '#5C6480', callback: v => getCurrencySymbol() + v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+      });
+    }
+
+    function renderBar(monthlyTrend) {
+      const ctx = document.getElementById('barChart');
+      if (barChart) barChart.destroy();
+      barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: (monthlyTrend||[]).map(m => m.monthName),
+          datasets: [{ label: 'Monthly Expense', data: (monthlyTrend||[]).map(m => m.amount), backgroundColor: 'rgba(108,99,255,0.7)', borderRadius: 8, borderSkipped: false }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#5C6480' }, grid: { display: false } }, y: { ticks: { color: '#5C6480', callback: v => getCurrencySymbol() + v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+      });
+    }
+
+    updateMonthLabel();
+    loadAnalytics();
+  </script>
+</body>
+</html>

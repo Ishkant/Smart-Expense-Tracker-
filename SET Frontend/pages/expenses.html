@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Expenses — SpendWise</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .toolbar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
+    .search-box { position: relative; flex: 1; min-width: 220px; }
+    .search-box input { padding-left: 40px; }
+    .search-box .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; }
+    .exp-card { display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--card); transition: var(--transition); margin-bottom: 10px; }
+    .exp-card:hover { border-color: var(--border2); background: var(--card-h); }
+    .exp-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+    .exp-info { flex: 1; min-width: 0; }
+    .exp-title { font-size: .95rem; font-weight: 500; }
+    .exp-meta  { font-size: .78rem; color: var(--text3); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .exp-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .exp-amount { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; }
+    .exp-amount.expense { color: var(--red); }
+    .exp-amount.income  { color: var(--green); }
+    .exp-actions { display: flex; gap: 8px; }
+    .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+    #expenseList { min-height: 200px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar"></aside>
+    <main class="main-content">
+      <div class="content-area">
+        <div class="page-header fade-in">
+          <div>
+            <h1 class="page-title">Expenses</h1>
+            <p class="page-subtitle">Manage all your transactions</p>
+          </div>
+          <button class="btn btn-primary" onclick="openModal()">+ Add Transaction</button>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar fade-in fade-in-1">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" class="form-input" placeholder="Search transactions..." oninput="handleSearch()"/>
+          </div>
+          <div class="month-selector">
+            <button onclick="changeMonth(-1)">‹</button>
+            <span class="month-label" id="monthLabel"></span>
+            <button onclick="changeMonth(1)">›</button>
+          </div>
+        </div>
+
+        <!-- Type Filter -->
+        <div class="filter-bar fade-in fade-in-2">
+          <div class="chip-group" id="typeFilter">
+            <div class="chip active" onclick="setType('all', this)">All</div>
+            <div class="chip" onclick="setType('EXPENSE', this)">💸 Expenses</div>
+            <div class="chip" onclick="setType('INCOME', this)">💰 Income</div>
+          </div>
+          <div class="chip-group" id="catFilter" style="margin-left: auto;"></div>
+        </div>
+
+        <!-- Expense List -->
+        <div id="expenseList" class="fade-in fade-in-3">
+          <div class="loading-overlay"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ADD / EDIT MODAL -->
+  <div class="modal-overlay" id="expenseModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">Add Transaction</h2>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <!-- Type Toggle -->
+      <div class="type-toggle" style="margin-bottom:20px;" id="typeToggle">
+        <button class="type-btn active expense" onclick="selectType('EXPENSE', this)">💸 Expense</button>
+        <button class="type-btn income" onclick="selectType('INCOME', this)">💰 Income</button>
+      </div>
+
+      <form id="expenseForm" style="display:flex;flex-direction:column;gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" id="fTitle" class="form-input" placeholder="e.g. Lunch at canteen" required/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label">Amount *</label>
+            <input type="number" id="fAmount" class="form-input" placeholder="0.00" step="0.01" min="0.01" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date *</label>
+            <input type="date" id="fDate" class="form-input" required/>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label">Category *</label>
+            <select id="fCategory" class="form-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Payment Method</label>
+            <select id="fPayment" class="form-select">
+              <option value="">Select</option>
+              <option value="CASH">Cash</option>
+              <option value="CARD">Card</option>
+              <option value="UPI">UPI</option>
+              <option value="NET_BANKING">Net Banking</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input type="text" id="fDesc" class="form-input" placeholder="Optional note"/>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn" style="flex:2;">Save Transaction</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/sidebar.js"></script>
+  <script>
+    requireAuth();
+    renderSidebar('expenses');
+
+    let currentMonth = new Date().getMonth() + 1;
+    let currentYear  = new Date().getFullYear();
+    let allExpenses  = [];
+    let categories   = [];
+    let editId       = null;
+    let selectedType = 'EXPENSE';
+    let filterType   = 'all';
+    let searchTimer  = null;
+
+    function updateMonthLabel() {
+      document.getElementById('monthLabel').textContent = `${getMonthName(currentMonth)} ${currentYear}`;
+    }
+    function changeMonth(dir) {
+      currentMonth += dir;
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
+      updateMonthLabel(); loadExpenses();
+    }
+
+    async function loadCategories() {
+      try {
+        const res = await get(API.EXPENSE_CATEGORIES);
+        categories = res.data || [];
+        const sel = document.getElementById('fCategory');
+        sel.innerHTML = categories.map(c => `<option value="${c}">${CATEGORY_ICONS[c] || '📦'} ${c}</option>`).join('');
+
+        // Category filter chips
+        document.getElementById('catFilter').innerHTML =
+          ['All Categories', ...categories.slice(0,5)].map((c, i) =>
+            `<div class="chip ${i===0?'active':''}" onclick="setCat('${i===0?'all':c}', this)">${i===0?'All':c}</div>`
+          ).join('');
+      } catch(e) {}
+    }
+
+    async function loadExpenses() {
+      document.getElementById('expenseList').innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+      try {
+        const res = await get(`${API.EXPENSES_MONTH}?month=${currentMonth}&year=${currentYear}`);
+        allExpenses = res.data || [];
+        renderList();
+      } catch(e) { showToast('Failed to load expenses', 'error'); }
+    }
+
+    let activeCat = 'all';
+    function setCat(cat, el) {
+      activeCat = cat;
+      document.querySelectorAll('#catFilter .chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      renderList();
+    }
+
+    function setType(type, el) {
+      filterType = type;
+      document.querySelectorAll('#typeFilter .chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      renderList();
+    }
+
+    function handleSearch() {
+      clearTimeout(searchTimer);
+      const q = document.getElementById('searchInput').value.trim();
+      if (q.length === 0) { loadExpenses(); return; }
+      if (q.length < 2) return;
+      searchTimer = setTimeout(async () => {
+        try {
+          const res = await get(`${API.EXPENSES_SEARCH}?keyword=${encodeURIComponent(q)}`);
+          allExpenses = res.data || [];
+          renderList();
+        } catch(e) {}
+      }, 400);
+    }
+
+    function renderList() {
+      let list = [...allExpenses];
+      if (filterType !== 'all') list = list.filter(e => e.type === filterType);
+      if (activeCat !== 'all')  list = list.filter(e => e.category === activeCat);
+
+      const el = document.getElementById('expenseList');
+      if (!list.length) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon">💸</div><h3>No transactions found</h3><p>Add your first transaction!</p></div>`;
+        return;
+      }
+      el.innerHTML = list.map(e => `
+        <div class="exp-card">
+          <div class="exp-icon">${CATEGORY_ICONS[e.category] || '📦'}</div>
+          <div class="exp-info">
+            <div class="exp-title">${e.title}</div>
+            <div class="exp-meta">
+              <span>${e.category}</span>
+              <span>•</span>
+              <span>${formatDate(e.date)}</span>
+              ${e.paymentMethod ? `<span>•</span><span>${e.paymentMethod.replace('_',' ')}</span>` : ''}
+              ${e.description ? `<span>•</span><span>${e.description}</span>` : ''}
+            </div>
+          </div>
+          <div class="exp-right">
+            <div class="exp-amount ${e.type.toLowerCase()}">${e.type==='EXPENSE'?'-':'+'}${formatCurrency(e.amount)}</div>
+            <div class="exp-actions">
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="openEdit(${e.id})" title="Edit">✏️</button>
+              <button class="btn btn-danger btn-sm btn-icon" onclick="deleteExpense(${e.id})" title="Delete">🗑️</button>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    // Modal
+    function openModal() {
+      editId = null;
+      document.getElementById('modalTitle').textContent = 'Add Transaction';
+      document.getElementById('expenseForm').reset();
+      document.getElementById('fDate').value = new Date().toISOString().split('T')[0];
+      selectType('EXPENSE', document.querySelector('.type-btn.expense'));
+      document.getElementById('expenseModal').classList.add('active');
+    }
+
+    function openEdit(id) {
+      const e = allExpenses.find(x => x.id === id);
+      if (!e) return;
+      editId = id;
+      document.getElementById('modalTitle').textContent = 'Edit Transaction';
+      document.getElementById('fTitle').value   = e.title;
+      document.getElementById('fAmount').value  = e.amount;
+      document.getElementById('fDate').value    = e.date;
+      document.getElementById('fCategory').value = e.category;
+      document.getElementById('fPayment').value  = e.paymentMethod || '';
+      document.getElementById('fDesc').value     = e.description || '';
+      selectType(e.type, document.querySelector(`.type-btn.${e.type.toLowerCase()}`));
+      document.getElementById('expenseModal').classList.add('active');
+    }
+
+    function closeModal() { document.getElementById('expenseModal').classList.remove('active'); }
+    document.getElementById('expenseModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+    function selectType(type, btn) {
+      selectedType = type;
+      document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+    }
+
+    document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+      const body = {
+        title: document.getElementById('fTitle').value,
+        amount: parseFloat(document.getElementById('fAmount').value),
+        date: document.getElementById('fDate').value,
+        category: document.getElementById('fCategory').value,
+        paymentMethod: document.getElementById('fPayment').value || null,
+        description: document.getElementById('fDesc').value || null,
+        type: selectedType
+      };
+      try {
+        if (editId) { await put(API.EXPENSE_BY_ID(editId), body); showToast('Transaction updated!'); }
+        else         { await post(API.EXPENSES, body); showToast('Transaction added!'); }
+        closeModal(); loadExpenses();
+      } catch(err) { showToast(err.message, 'error'); }
+      btn.disabled = false; btn.textContent = 'Save Transaction';
+    });
+
+    async function deleteExpense(id) {
+      if (!confirm('Delete this transaction?')) return;
+      try { await del(API.EXPENSE_BY_ID(id)); showToast('Deleted!'); loadExpenses(); }
+      catch(e) { showToast('Delete failed', 'error'); }
+    }
+
+    updateMonthLabel();
+    loadCategories();
+    loadExpenses();
+  </script>
+</body>
+</html>

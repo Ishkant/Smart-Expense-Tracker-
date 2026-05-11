@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Income — SpendWise</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .inc-card { display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--card); transition: var(--transition); margin-bottom: 10px; }
+    .inc-card:hover { border-color: rgba(45,212,160,0.2); background: var(--card-h); }
+    .inc-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(45,212,160,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+    .inc-info { flex: 1; min-width: 0; }
+    .inc-title { font-size: .95rem; font-weight: 500; }
+    .inc-meta  { font-size: .78rem; color: var(--text3); margin-top: 3px; display: flex; gap: 10px; }
+    .inc-amount { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; color: var(--green); }
+    .inc-actions { display: flex; gap: 8px; }
+    .inc-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar"></aside>
+    <main class="main-content">
+      <div class="content-area">
+        <div class="page-header fade-in">
+          <div>
+            <h1 class="page-title">Income</h1>
+            <p class="page-subtitle">Track all your income sources</p>
+          </div>
+          <button class="btn btn-success" onclick="openModal()">+ Add Income</button>
+        </div>
+
+        <div class="month-selector fade-in" style="margin-bottom:24px;display:inline-flex;">
+          <button onclick="changeMonth(-1)">‹</button>
+          <span class="month-label" id="monthLabel"></span>
+          <button onclick="changeMonth(1)">›</button>
+        </div>
+
+        <!-- Summary -->
+        <div class="inc-summary fade-in fade-in-1">
+          <div class="card stat-card green">
+            <div class="stat-label">Total Income</div>
+            <div class="stat-value green" id="totalIncome">—</div>
+            <div class="stat-sub">This month</div>
+          </div>
+          <div class="card stat-card red">
+            <div class="stat-label">Total Expenses</div>
+            <div class="stat-value red" id="totalExpense">—</div>
+            <div class="stat-sub">This month</div>
+          </div>
+          <div class="card stat-card purple">
+            <div class="stat-label">Net Savings</div>
+            <div class="stat-value purple" id="netSavings">—</div>
+            <div class="stat-sub">Income − Expenses</div>
+          </div>
+        </div>
+
+        <!-- Income List -->
+        <div id="incomeList" class="fade-in fade-in-2">
+          <div class="loading-overlay"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="incomeModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">Add Income</h2>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <form id="incomeForm" style="display:flex;flex-direction:column;gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Source / Title *</label>
+          <input type="text" id="fTitle" class="form-input" placeholder="e.g. Salary, Freelance payment" required/>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label">Amount *</label>
+            <input type="number" id="fAmount" class="form-input" placeholder="0.00" step="0.01" min="0.01" required/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date *</label>
+            <input type="date" id="fDate" class="form-input" required/>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group">
+            <label class="form-label">Category *</label>
+            <select id="fCategory" class="form-select" required>
+              <option value="Salary">💼 Salary</option>
+              <option value="Freelance">💻 Freelance</option>
+              <option value="Investment">📈 Investment</option>
+              <option value="Other">📦 Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Payment Method</label>
+            <select id="fPayment" class="form-select">
+              <option value="">Select</option>
+              <option value="CASH">Cash</option>
+              <option value="CARD">Card</option>
+              <option value="UPI">UPI</option>
+              <option value="NET_BANKING">Net Banking</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <input type="text" id="fDesc" class="form-input" placeholder="Optional note"/>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+          <button type="submit" class="btn btn-success" id="saveBtn" style="flex:2;">Save Income</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/sidebar.js"></script>
+  <script>
+    requireAuth();
+    renderSidebar('income');
+
+    let currentMonth = new Date().getMonth() + 1;
+    let currentYear  = new Date().getFullYear();
+    let allIncome    = [];
+    let editId       = null;
+
+    function updateMonthLabel() { document.getElementById('monthLabel').textContent = `${getMonthName(currentMonth)} ${currentYear}`; }
+    function changeMonth(dir) {
+      currentMonth += dir;
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
+      updateMonthLabel(); loadData();
+    }
+
+    async function loadData() {
+      document.getElementById('incomeList').innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+      try {
+        const [incRes, anaRes] = await Promise.all([
+          get(`${API.EXPENSES_MONTH}?month=${currentMonth}&year=${currentYear}`),
+          get(`${API.ANALYTICS}?month=${currentMonth}&year=${currentYear}`)
+        ]);
+        allIncome = (incRes.data || []).filter(e => e.type === 'INCOME');
+        const d = anaRes.data;
+        document.getElementById('totalIncome').textContent  = formatCurrency(d.totalIncome);
+        document.getElementById('totalExpense').textContent = formatCurrency(d.totalExpense);
+        document.getElementById('netSavings').textContent   = formatCurrency(d.savings);
+        renderList();
+      } catch(e) { showToast('Failed to load data', 'error'); }
+    }
+
+    function renderList() {
+      const el = document.getElementById('incomeList');
+      if (!allIncome.length) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><h3>No income this month</h3><p>Add your first income entry!</p></div>'; return;
+      }
+      el.innerHTML = allIncome.map(e => `
+        <div class="inc-card">
+          <div class="inc-icon">${CATEGORY_ICONS[e.category] || '💰'}</div>
+          <div class="inc-info">
+            <div class="inc-title">${e.title}</div>
+            <div class="inc-meta"><span>${e.category}</span><span>•</span><span>${formatDate(e.date)}</span>${e.paymentMethod?`<span>•</span><span>${e.paymentMethod.replace('_',' ')}</span>`:''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div class="inc-amount">+${formatCurrency(e.amount)}</div>
+            <div class="inc-actions">
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="openEdit(${e.id})">✏️</button>
+              <button class="btn btn-danger btn-sm btn-icon" onclick="deleteIncome(${e.id})">🗑️</button>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function openModal() {
+      editId = null;
+      document.getElementById('modalTitle').textContent = 'Add Income';
+      document.getElementById('incomeForm').reset();
+      document.getElementById('fDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('incomeModal').classList.add('active');
+    }
+    function openEdit(id) {
+      const e = allIncome.find(x => x.id === id);
+      if (!e) return;
+      editId = id;
+      document.getElementById('modalTitle').textContent = 'Edit Income';
+      document.getElementById('fTitle').value    = e.title;
+      document.getElementById('fAmount').value   = e.amount;
+      document.getElementById('fDate').value     = e.date;
+      document.getElementById('fCategory').value = e.category;
+      document.getElementById('fPayment').value  = e.paymentMethod || '';
+      document.getElementById('fDesc').value     = e.description || '';
+      document.getElementById('incomeModal').classList.add('active');
+    }
+    function closeModal() { document.getElementById('incomeModal').classList.remove('active'); }
+    document.getElementById('incomeModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+    document.getElementById('incomeForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+      const body = {
+        title: document.getElementById('fTitle').value,
+        amount: parseFloat(document.getElementById('fAmount').value),
+        date: document.getElementById('fDate').value,
+        category: document.getElementById('fCategory').value,
+        paymentMethod: document.getElementById('fPayment').value || null,
+        description: document.getElementById('fDesc').value || null,
+        type: 'INCOME'
+      };
+      try {
+        if (editId) { await put(API.EXPENSE_BY_ID(editId), body); showToast('Income updated!'); }
+        else        { await post(API.EXPENSES, body); showToast('Income added! 💰'); }
+        closeModal(); loadData();
+      } catch(err) { showToast(err.message, 'error'); }
+      btn.disabled = false; btn.textContent = 'Save Income';
+    });
+
+    async function deleteIncome(id) {
+      if (!confirm('Delete this income entry?')) return;
+      try { await del(API.EXPENSE_BY_ID(id)); showToast('Deleted!'); loadData(); }
+      catch(e) { showToast('Delete failed', 'error'); }
+    }
+
+    updateMonthLabel();
+    loadData();
+  </script>
+</body>
+</html>

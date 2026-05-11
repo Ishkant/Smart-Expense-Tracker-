@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Settings — SpendWise</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+    .avatar-big { width: 80px; height: 80px; border-radius: 20px; background: linear-gradient(135deg, var(--accent), var(--green)); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem; margin-bottom: 16px; }
+    .info-row { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--text3); }
+    .info-value { font-weight: 500; }
+    @media(max-width:800px){ .settings-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar"></aside>
+    <main class="main-content">
+      <div class="content-area">
+        <div class="page-header fade-in">
+          <div>
+            <h1 class="page-title">Settings</h1>
+            <p class="page-subtitle">Manage your profile and preferences</p>
+          </div>
+        </div>
+
+        <div class="settings-grid fade-in fade-in-1">
+
+          <!-- Profile Info -->
+          <div class="card">
+            <div id="profileInfo">
+              <div class="avatar-big" id="avatarBig">?</div>
+              <h2 style="font-size:1.3rem;font-weight:700;" id="profName">—</h2>
+              <p style="color:var(--text3);font-size:.875rem;margin-top:4px;" id="profEmail">—</p>
+              <div style="margin-top:24px;">
+                <div class="info-row"><span class="info-label">Currency</span><span class="info-value" id="profCurrency">—</span></div>
+                <div class="info-row"><span class="info-label">Monthly Budget</span><span class="info-value" id="profBudget">—</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Profile Form -->
+          <div class="card">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:20px;">✏️ Edit Profile</div>
+            <form id="profileForm" style="display:flex;flex-direction:column;gap:16px;">
+              <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" id="fName" class="form-input" required/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">New Password <span style="color:var(--text3);font-weight:400;">(leave blank to keep current)</span></label>
+                <input type="password" id="fPassword" class="form-input" placeholder="Min 6 characters" minlength="6"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Currency</label>
+                <select id="fCurrency" class="form-select">
+                  <option value="INR">₹ INR</option>
+                  <option value="USD">$ USD</option>
+                  <option value="EUR">€ EUR</option>
+                  <option value="GBP">£ GBP</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Monthly Budget</label>
+                <input type="number" id="fMonthlyBudget" class="form-input" placeholder="e.g. 50000" min="0"/>
+              </div>
+              <button type="submit" class="btn btn-primary" id="saveBtn">Save Changes</button>
+            </form>
+          </div>
+
+          <!-- Danger Zone -->
+          <div class="card" style="grid-column:1/-1;border-color:rgba(255,91,122,0.2);">
+            <div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin-bottom:12px;color:var(--red);">⚠️ Danger Zone</div>
+            <p style="color:var(--text3);font-size:.875rem;margin-bottom:16px;">Logging out will clear your session. Your data remains safe.</p>
+            <button class="btn btn-danger" onclick="logout()">⏏ Logout</button>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/sidebar.js"></script>
+  <script>
+    requireAuth();
+    renderSidebar('profile');
+
+    function loadProfile() {
+      const user = getUser();
+      if (!user) return;
+      const initial = user.name?.[0]?.toUpperCase() || '?';
+      document.getElementById('avatarBig').textContent   = initial;
+      document.getElementById('profName').textContent    = user.name;
+      document.getElementById('profEmail').textContent   = user.email;
+      document.getElementById('profCurrency').textContent= user.currency || 'INR';
+      document.getElementById('profBudget').textContent  = user.monthlyBudget ? formatCurrency(user.monthlyBudget) : 'Not set';
+      document.getElementById('fName').value             = user.name || '';
+      document.getElementById('fCurrency').value         = user.currency || 'INR';
+      document.getElementById('fMonthlyBudget').value    = user.monthlyBudget || '';
+    }
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+
+      const body = {
+        name: document.getElementById('fName').value,
+        email: getUser()?.email,
+        currency: document.getElementById('fCurrency').value,
+        monthlyBudget: parseFloat(document.getElementById('fMonthlyBudget').value) || null,
+      };
+      const pwd = document.getElementById('fPassword').value;
+      if (pwd) body.password = pwd;
+
+      try {
+        const res = await put(API.PROFILE, body);
+        saveAuth(res.data);
+        renderSidebar('profile');
+        loadProfile();
+        showToast('Profile updated successfully! ✓');
+      } catch(err) {
+        showToast(err.message || 'Update failed', 'error');
+      }
+      btn.disabled = false; btn.textContent = 'Save Changes';
+    });
+
+    loadProfile();
+  </script>
+</body>
+</html>
